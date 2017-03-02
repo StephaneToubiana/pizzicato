@@ -60,9 +60,12 @@ Pizzicato.Sound = function(description, callback) {
 	else if (description.source === 'sound')
 		(initializeWithSoundObject.bind(this))(description.options, callback);
 
+	else if (description.source === 'fileFromFs')
+		(initializeForServer.bind(this))(description.options.files, callback);
+
 
 	function getDescriptionError(description) {
-		var supportedSources = ['wave', 'file', 'input', 'script', 'sound'];
+		var supportedSources = ['wave', 'file', 'input', 'script', 'sound', 'fileFromFs'];
 
 		if (description && (!util.isFunction(description) && !util.isString(description) && !util.isObject(description)))
 			return 'Description type not supported. Initialize a sound using an object, a function or a string.';
@@ -77,6 +80,9 @@ Pizzicato.Sound = function(description, callback) {
 
 			if (description.source === 'script' && (!description.options || !description.options.audioFunction))
 				return 'An audio function is needed for sounds with a script source';
+
+			if (description.source === 'fileFromFs' && (!description.options || !description.options.files))
+				return 'A file is needed for sounds with a fileFromFs source';
 		}
 	}
 
@@ -199,6 +205,39 @@ Pizzicato.Sound = function(description, callback) {
 			this.sourceNode = this.getRawSourceNode();
 			this.frequency = options.sound.frequency;
 		}
+	}
+
+	function initializeForServer(files, callback) {
+		files = util.isArray(files) ? files : [files];
+
+		var node = Pizzicato.context.createBufferSource();
+		this.getRawSourceNode = function() {
+			node.loop = this.loop;
+			return node;
+		};
+
+		Pizzicato.context.decodeAudioData(files[0])
+		.then((function (buffer) {
+			node.buffer = buffer;
+
+			if (util.isFunction(callback))
+				callback();
+		}).bind(self))
+		.catch((function (error) {
+			console.error('Error decoding audio file ' + files[0]);
+
+			if (files.length > 1) {
+				files.shift();
+				initializeForServer(files, callback);
+				return;
+			}
+
+			error = error || new Error('Error decoding audio file ' + files[0]);
+
+			if (util.isFunction(callback))
+				callback(error);
+		}).bind(self));
+
 	}
 };
 
